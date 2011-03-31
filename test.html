@@ -1,0 +1,21 @@
+<html>
+  <head>
+    <title>Raphaёl loadSVG Test</title>
+    <meta http-equiv="content-type" content="text/html; encoding=utf-8"/>
+    <script type="text/javascript" src="../lib/jquery.js"></script>
+    <script type="text/javascript" src="../lib/raphael.js"></script>
+    <script type="text/javascript" src="raphael.loadsvg.js"></script>
+  </head>
+  <body>
+    <script type="text/javascript">
+      var paper;
+
+      $(function () {
+        paper = Raphael(0, 0, 200, 200);
+        paper.rect(0, 0, paper.width, paper.height);
+
+        paper.loadSVG('/assets/butterfly.svg', paper.set(), { x: 150, y: 10, width: 200, height: 200, keepAspectRatio: true });
+      });
+    </script>
+  </body>
+</html>
