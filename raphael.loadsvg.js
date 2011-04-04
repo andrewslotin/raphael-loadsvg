@@ -3,6 +3,72 @@ Raphael.fn.loadSVG = function (url, layer, options) {
 
     options = options || {};
 
+    function parseStyle(style) {
+        var attrs = {};
+
+        $.each(style.split(/\s*;\s*/), function (i, attr) {
+            var chunks = attr.split(/\s*:\s*/, 2);
+            attrs[chunks[0]] = chunks[1];
+        });
+
+        return attrs;
+    }
+
+    function processLinearGradient($node, $doc) {
+        var attrs = {};
+
+        if ($node.attr('xlink:href')) {
+            attrs = processLinearGradient($($node.attr('xlink:href'), $doc), $doc);
+        }
+
+        var vector = {
+            x: ($node.attr('x2') || 0) - ($node.attr('x1') || 0),
+            y: ($node.attr('y2') || 0) - ($node.attr('y1') || 0)
+        };
+
+        attrs.angle = (360 + Math.atan(vector.y / vector.x) * 180 / Math.PI) % 360;
+
+        var stops = {}, offsets = [];
+        $('stop', $node).each(function (i, el) {
+            var $el    = $(el),
+                offset = parseFloat($el.attr('offset') || 0) * 100,
+                style = parseStyle($el.attr('style'));
+
+            stops[offset] = { color: style['stop-color'], offset: offset };
+            if (style.hasOwnProperty('stop-opacity')) {
+                var rgb = me.raphael.getRGB(stops[offset].color);
+                stops[offset].color = 'rgba(' + [ rgb.r, rgb.g, rgb.b, parseFloat(style['stop-opacity']) ].join(',') + ')';
+            }
+            offsets.push(offset);
+        });
+
+        if (offsets.length) {
+            attrs.stops = [];
+            offsets.sort();
+
+            for (var i = 0, l = offsets.length; i < l; i++) {
+                attrs.stops.push(stops[offsets[i]]);
+            }
+        }
+
+        return attrs;
+    }
+
+    function processGradientNode($node, $doc) {
+        var attrs;
+
+        if ($node[0].nodeName == 'linearGradient') {
+            attrs = processLinearGradient($node, $doc);
+            return ([ attrs.angle ].concat($.map(attrs.stops, function (stop, i) {
+                return stop.color + ((i == 0 || i == attrs.stops.length - 1) ? '' : ':' + stop.offset);
+            })).join('-'));
+        } else if ($node[0].nodeName == 'radialGradient') {
+            return ''
+        } else {
+            throw new Error('Invalid gradient node name: ' + $node[0].nodeName);
+        }
+    }
+
     $.ajax({
         method: 'GET',
         url: url,
@@ -26,11 +92,20 @@ Raphael.fn.loadSVG = function (url, layer, options) {
                     }
                 });
 
-                if (style) {
-                    $.each(style.split(/\s*;\s*/), function (i, attr) {
-                        var chunks = attr.split(/\s*:\s*/, 2);
-                        attrs[chunks[0]] = chunks[1];
-                    });
+                $.extend(attrs, parseStyle(style));
+
+                if (/url\("?(#[^\)]+)"?\)/.exec(attrs.fill)) {
+                    var g = processGradientNode($(RegExp.$1, $root), $(svg));
+
+                    if (g) {
+                        attrs['fill'] = g;
+                    } else {
+                        delete attrs['fill'];
+                    }
+                }
+
+                if (! attrs.hasOwnProperty('stroke')) {
+                    attrs.stroke = 'none';
                 }
 
                 $.each(($el.attr('transform') || '').split(/\s+/), function (i, trans) {
@@ -39,7 +114,8 @@ Raphael.fn.loadSVG = function (url, layer, options) {
                     }
                 });
 
-                var shape = me[el.nodeName].call(me, $(el).attr('d') ? [ $(el).attr('d') ] : []);
+                var shape = me[el.nodeName].call(me, $(el).attr('d') ? [ $(el).attr('d').replace(/\s{2,}/g, ' ') ] : []);
+
                 shape.attr(attrs);
 
                 if (transform)
@@ -63,10 +139,6 @@ Raphael.fn.loadSVG = function (url, layer, options) {
             }
 
             layer.translate(options.x || 0, options.y || 0);
-
-            if (typeof options.callback == 'function') {
-                options.callback.apply(me, [ layer ]);
-            }
 //                set.forEach(function (el) {
 //                    if (el.transform().length) {
 //                        var el_bb = el.getBBox();
