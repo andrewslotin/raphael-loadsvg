@@ -208,6 +208,9 @@ Raphael.fn.loadSVG = function (url, layer, options) {
             }
 
             layer.translate(options.x || 0, options.y || 0);
+
+            if (typeof options.callback == 'function')
+                options.callback.apply(me, [ layer ]);
 //                set.forEach(function (el) {
 //                    if (el.transform().length) {
 //                        var el_bb = el.getBBox();
