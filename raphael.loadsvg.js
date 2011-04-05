@@ -1,3 +1,12 @@
+Object.prototype.merge = Object.prototype.merge || function (object) {
+    for (var k in object) {
+        if (object.hasOwnProperty(k))
+            this[k] = object[k];
+    }
+
+    return this;
+};
+
 Raphael.fn.loadSVG = function (url, layer, options) {
     var me = this;
 
@@ -14,6 +23,43 @@ Raphael.fn.loadSVG = function (url, layer, options) {
         return attrs;
     }
 
+    function sortStops(stops) {
+        var offsets = [], stops_sorted = [];
+        stops = stops || {};
+
+        for (var offset in stops) {
+            if (stops.hasOwnProperty(offset)) offsets.push(offset);
+        }
+
+        if (offsets.length) {
+            offsets.sort();
+
+            for (var i = 0, l = offsets.length; i < l; i++) {
+                stops_sorted.push(stops[offsets[i]]);
+            }
+        }
+
+        return stops_sorted;
+    }
+
+    function processStops($node) {
+        var stops = {};
+
+        $('stop', $node).each(function (i, el) {
+            var $el    = $(el),
+                offset = parseFloat($el.attr('offset') || 0) * 100,
+                style  = parseStyle($el.attr('style'));
+
+            stops[offset] = { color: style['stop-color'], offset: offset };
+            if (style.hasOwnProperty('stop-opacity')) {
+                var rgb = me.raphael.getRGB(stops[offset].color);
+                stops[offset].color = 'rgba(' + [ rgb.r, rgb.g, rgb.b, parseFloat(style['stop-opacity']) ].join(',') + ')';
+            }
+        });
+
+        return stops;
+    }
+
     function processLinearGradient($node, $doc) {
         var attrs = {};
 
@@ -28,45 +74,58 @@ Raphael.fn.loadSVG = function (url, layer, options) {
 
         attrs.angle = (360 + Math.atan(vector.y / vector.x) * 180 / Math.PI) % 360;
 
-        var stops = {}, offsets = [];
-        $('stop', $node).each(function (i, el) {
-            var $el    = $(el),
-                offset = parseFloat($el.attr('offset') || 0) * 100,
-                style = parseStyle($el.attr('style'));
+        if (attrs.hasOwnProperty('stops'))
+            attrs.stops.merge(processStops($node));
+        else
+            attrs.stops = processStops($node);
 
-            stops[offset] = { color: style['stop-color'], offset: offset };
-            if (style.hasOwnProperty('stop-opacity')) {
-                var rgb = me.raphael.getRGB(stops[offset].color);
-                stops[offset].color = 'rgba(' + [ rgb.r, rgb.g, rgb.b, parseFloat(style['stop-opacity']) ].join(',') + ')';
-            }
-            offsets.push(offset);
-        });
+        return attrs;
+    }
 
-        if (offsets.length) {
-            attrs.stops = [];
-            offsets.sort();
+    function processRadialGradient($node, $doc) {
+        var attrs = {};
 
-            for (var i = 0, l = offsets.length; i < l; i++) {
-                attrs.stops.push(stops[offsets[i]]);
-            }
+        if ($node.attr('xlink:href')) {
+            attrs = processRadialGradient($($node.attr('xlink:href'), $doc), $doc);
         }
+
+        var d = parseFloat($node.attr('r')) * 2;
+
+        if (! (attrs.hasOwnProperty('center') && attrs.center.hasOwnProperty('x')) || $node[0].hasAttribute('fx')) {
+            attrs.center = attrs.center || {};
+            attrs.center.x = parseFloat($node.attr('fx')) / d;
+        }
+
+        if (! (attrs.hasOwnProperty('center') && attrs.center.hasOwnProperty('y')) || $node[0].hasAttribute('fy')) {
+            attrs.center.y = parseFloat($node.attr('fy')) / d;
+        }
+
+        if (attrs.hasOwnProperty('stops'))
+            attrs.stops.merge(processStops($node));
+        else
+            attrs.stops = processStops($node);
 
         return attrs;
     }
 
     function processGradientNode($node, $doc) {
-        var attrs;
+        var prefix = '', attrs;
 
         if ($node[0].nodeName == 'linearGradient') {
             attrs = processLinearGradient($node, $doc);
-            return ([ attrs.angle ].concat($.map(attrs.stops, function (stop, i) {
-                return stop.color + ((i == 0 || i == attrs.stops.length - 1) ? '' : ':' + stop.offset);
-            })).join('-'));
+            prefix = String(attrs.angle || 0);
         } else if ($node[0].nodeName == 'radialGradient') {
-            return ''
+            attrs = processRadialGradient($node, $doc);
+            prefix = 'r' + (attrs.hasOwnProperty('center') ? '(' + attrs.center.x + ',' + attrs.center.y + ')' : '');
         } else {
             throw new Error('Invalid gradient node name: ' + $node[0].nodeName);
         }
+
+        attrs.stops = sortStops(attrs.stops);
+
+        return [ prefix ].concat($.map(attrs.stops, function (stop, i) {
+            return stop.color + ((i == 0 || i == attrs.stops.length - 1) ? '' : ':' + stop.offset);
+        })).join('-');
     }
 
     $.ajax({
@@ -120,6 +179,16 @@ Raphael.fn.loadSVG = function (url, layer, options) {
 
                 if (transform)
                     shape.transform(transform);
+
+                if (attrs.id == 'hands') {
+                    var p = [ $(el).attr('d'), "M 573.16558,180.18228 488.22463,380.47148 324.64455,298.68141 170.15233,394.1031 106.53786,575.85871" ],
+                        j = 0;
+
+                    var step = function () {
+                        shape.animate([{ path: p[0] },{ path: p[1] },{ path: p[0] }], 500, 'bounce');
+                    };
+                    setTimeout(step, 500);
+                }
 
                 layer.push(shape);
             });
