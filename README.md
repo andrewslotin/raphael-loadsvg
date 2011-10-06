@@ -1,4 +1,4 @@
-### Raphaёl.loadSVG
+# Raphaёl.loadSVG
 
 This plugin allows you to load an SVG file exported from AI to Raphaёl.
 
@@ -6,7 +6,7 @@ This plugin allows you to load an SVG file exported from AI to Raphaёl.
 
     Raplhael.loadSVG(imageUrl, targetSet, params);
 
-# Example
+### Example
 
     paper = Raphael(0, 0, 200, 200);
     paper.rect(0, 0, paper.width, paper.height);
